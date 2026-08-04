@@ -1,0 +1,235 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/programmerpark/subscription-aggregator/internal/model"
+)
+
+var ErrNotFound = errors.New("subscription not found")
+
+type SubscriptionRepository struct {
+	pool *pgxpool.Pool
+}
+
+func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
+	return &SubscriptionRepository{pool: pool}
+}
+
+func (r *SubscriptionRepository) Create(ctx context.Context, req model.CreateSubscriptionRequest) (*model.Subscription, error) {
+	const q = `
+		INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+	`
+
+	var end *time.Time
+	if req.EndDate != nil {
+		t := req.EndDate.Time
+		end = &t
+	}
+
+	row := r.pool.QueryRow(ctx, q, req.ServiceName, req.Price, req.UserID, req.StartDate.Time, end)
+	sub, err := scanSubscription(row)
+	if err != nil {
+		return nil, fmt.Errorf("create subscription: %w", err)
+	}
+	return sub, nil
+}
+
+func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Subscription, error) {
+	const q = `
+		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+		FROM subscriptions
+		WHERE id = $1
+	`
+	sub, err := scanSubscription(r.pool.QueryRow(ctx, q, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get subscription: %w", err)
+	}
+	return sub, nil
+}
+
+func (r *SubscriptionRepository) List(ctx context.Context, f model.ListFilter) ([]model.Subscription, int, error) {
+	where := `WHERE user_id = $1`
+	args := []any{f.UserID}
+	argN := 2
+
+	if f.ServiceName != nil && *f.ServiceName != "" {
+		where += fmt.Sprintf(" AND service_name ILIKE $%d", argN)
+		args = append(args, *f.ServiceName)
+		argN++
+	}
+
+	var total int
+	countQ := `SELECT COUNT(*) FROM subscriptions ` + where
+	if err := r.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count subscriptions: %w", err)
+	}
+
+	q := `
+		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+		FROM subscriptions
+	` + where + ` ORDER BY created_at DESC`
+
+	q += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argN, argN+1)
+	args = append(args, f.Limit, f.Offset)
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]model.Subscription, 0)
+	for rows.Next() {
+		sub, err := scanSubscription(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		result = append(result, *sub)
+	}
+	return result, total, rows.Err()
+}
+
+func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, req model.UpdateSubscriptionRequest) (*model.Subscription, error) {
+	current, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.ServiceName != nil {
+		current.ServiceName = *req.ServiceName
+	}
+	if req.Price != nil {
+		current.Price = *req.Price
+	}
+	if req.UserID != nil {
+		current.UserID = *req.UserID
+	}
+	if req.StartDate != nil {
+		current.StartDate = *req.StartDate
+	}
+	if req.EndDate != nil {
+		current.EndDate = req.EndDate
+	}
+
+	const q = `
+		UPDATE subscriptions
+		SET service_name = $2,
+		    price = $3,
+		    user_id = $4,
+		    start_date = $5,
+		    end_date = $6,
+		    updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+	`
+
+	var end *time.Time
+	if current.EndDate != nil {
+		t := current.EndDate.Time
+		end = &t
+	}
+
+	sub, err := scanSubscription(r.pool.QueryRow(
+		ctx, q, id, current.ServiceName, current.Price, current.UserID, current.StartDate.Time, end,
+	))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update subscription: %w", err)
+	}
+	return sub, nil
+}
+
+func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM subscriptions WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete subscription: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListForSum returns subscriptions that may overlap with [from, to].
+func (r *SubscriptionRepository) ListForSum(ctx context.Context, f model.SumFilter) ([]model.Subscription, error) {
+	q := `
+		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+		FROM subscriptions
+		WHERE start_date <= $1
+		  AND (end_date IS NULL OR end_date >= $2)
+	`
+	args := []any{f.To.Time, f.From.Time}
+	argN := 3
+
+	if f.UserID != nil {
+		q += fmt.Sprintf(" AND user_id = $%d", argN)
+		args = append(args, *f.UserID)
+		argN++
+	}
+	if f.ServiceName != nil && *f.ServiceName != "" {
+		q += fmt.Sprintf(" AND service_name ILIKE $%d", argN)
+		args = append(args, *f.ServiceName)
+	}
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list for sum: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]model.Subscription, 0)
+	for rows.Next() {
+		sub, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *sub)
+	}
+	return result, rows.Err()
+}
+
+type scannable interface {
+	Scan(dest ...any) error
+}
+
+func scanSubscription(row scannable) (*model.Subscription, error) {
+	var (
+		sub   model.Subscription
+		start time.Time
+		end   *time.Time
+	)
+	if err := row.Scan(
+		&sub.ID,
+		&sub.ServiceName,
+		&sub.Price,
+		&sub.UserID,
+		&start,
+		&end,
+		&sub.CreatedAt,
+		&sub.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	sub.StartDate = model.YearMonth{Time: time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, time.UTC)}
+	if end != nil {
+		ym := model.YearMonth{Time: time.Date(end.Year(), end.Month(), 1, 0, 0, 0, 0, time.UTC)}
+		sub.EndDate = &ym
+	}
+	return &sub, nil
+}
