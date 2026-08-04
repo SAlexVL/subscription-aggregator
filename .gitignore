@@ -1,0 +1,17 @@
+# Binary
+/bin/
+/tmp/
+*.exe
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env (keep example)
+.env
+
+# Go
+vendor/
