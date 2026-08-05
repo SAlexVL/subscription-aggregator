@@ -84,7 +84,23 @@ const docTemplate = `{
                 "consumes": ["application/json"],
                 "produces": ["application/json"],
                 "tags": ["subscriptions"],
-                "summary": "Update subscription",
+                "summary": "Update subscription (partial)",
+                "parameters": [
+                    {"type":"string","description":"Subscription ID","name":"id","in":"path","required":true},
+                    {"description":"Fields to update","name":"body","in":"body","required":true,"schema":{"$ref":"#/definitions/model.UpdateSubscriptionRequest"}}
+                ],
+                "responses": {
+                    "200": {"description":"OK","schema":{"$ref":"#/definitions/model.Subscription"}},
+                    "400": {"description":"Bad Request","schema":{"$ref":"#/definitions/handler.errorResponse"}},
+                    "404": {"description":"Not Found","schema":{"$ref":"#/definitions/handler.errorResponse"}},
+                    "500": {"description":"Internal Server Error","schema":{"$ref":"#/definitions/handler.errorResponse"}}
+                }
+            },
+            "patch": {
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["subscriptions"],
+                "summary": "Update subscription (partial)",
                 "parameters": [
                     {"type":"string","description":"Subscription ID","name":"id","in":"path","required":true},
                     {"description":"Fields to update","name":"body","in":"body","required":true,"schema":{"$ref":"#/definitions/model.UpdateSubscriptionRequest"}}

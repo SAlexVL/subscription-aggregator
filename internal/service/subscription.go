@@ -152,6 +152,9 @@ func validateCreate(req model.CreateSubscriptionRequest) error {
 }
 
 func validateUpdate(req model.UpdateSubscriptionRequest) error {
+	if req.ServiceName == nil && req.Price == nil && req.UserID == nil && req.StartDate == nil && req.EndDate == nil {
+		return fmt.Errorf("%w: at least one field is required", ErrInvalidInput)
+	}
 	if req.ServiceName != nil && *req.ServiceName == "" {
 		return fmt.Errorf("%w: service_name cannot be empty", ErrInvalidInput)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,48 +104,49 @@ func (r *postgresSubscriptionRepository) List(ctx context.Context, f model.ListF
 }
 
 func (r *postgresSubscriptionRepository) Update(ctx context.Context, id uuid.UUID, req model.UpdateSubscriptionRequest) (*model.Subscription, error) {
-	current, err := r.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
+	setParts := make([]string, 0, 6)
+	args := []any{id}
+	argN := 2
 
 	if req.ServiceName != nil {
-		current.ServiceName = *req.ServiceName
+		setParts = append(setParts, fmt.Sprintf("service_name = $%d", argN))
+		args = append(args, *req.ServiceName)
+		argN++
 	}
 	if req.Price != nil {
-		current.Price = *req.Price
+		setParts = append(setParts, fmt.Sprintf("price = $%d", argN))
+		args = append(args, *req.Price)
+		argN++
 	}
 	if req.UserID != nil {
-		current.UserID = *req.UserID
+		setParts = append(setParts, fmt.Sprintf("user_id = $%d", argN))
+		args = append(args, *req.UserID)
+		argN++
 	}
 	if req.StartDate != nil {
-		current.StartDate = *req.StartDate
+		setParts = append(setParts, fmt.Sprintf("start_date = $%d", argN))
+		args = append(args, req.StartDate.Time)
+		argN++
 	}
 	if req.EndDate != nil {
-		current.EndDate = req.EndDate
+		setParts = append(setParts, fmt.Sprintf("end_date = $%d", argN))
+		args = append(args, req.EndDate.Time)
+		argN++
 	}
 
-	const q = `
+	if len(setParts) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	setParts = append(setParts, "updated_at = NOW()")
+	q := fmt.Sprintf(`
 		UPDATE subscriptions
-		SET service_name = $2,
-		    price = $3,
-		    user_id = $4,
-		    start_date = $5,
-		    end_date = $6,
-		    updated_at = NOW()
+		SET %s
 		WHERE id = $1
 		RETURNING id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-	`
+	`, strings.Join(setParts, ", "))
 
-	var end *time.Time
-	if current.EndDate != nil {
-		t := current.EndDate.Time
-		end = &t
-	}
-
-	sub, err := scanSubscription(r.pool.QueryRow(
-		ctx, q, id, current.ServiceName, current.Price, current.UserID, current.StartDate.Time, end,
-	))
+	sub, err := scanSubscription(r.pool.QueryRow(ctx, q, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

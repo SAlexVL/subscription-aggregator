@@ -135,7 +135,7 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 }
 
 // Update godoc
-// @Summary      Update subscription
+// @Summary      Update subscription (partial)
 // @Tags         subscriptions
 // @Accept       json
 // @Produce      json
@@ -146,6 +146,7 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 // @Failure      404   {object}  errorResponse
 // @Failure      500   {object}  errorResponse
 // @Router       /subscriptions/{id} [put]
+// @Router       /subscriptions/{id} [patch]
 func (h *SubscriptionHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

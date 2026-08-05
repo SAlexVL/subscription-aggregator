@@ -28,7 +28,7 @@ docker compose up --build -d
 | POST   | `/api/v1/subscriptions`      | Создать запись                                |
 | GET    | `/api/v1/subscriptions`      | Список по `user_id` (обязателен) + пагинация  |
 | GET    | `/api/v1/subscriptions/{id}` | Получить по ID                                |
-| PUT    | `/api/v1/subscriptions/{id}` | Обновить                                      |
+| PUT/PATCH | `/api/v1/subscriptions/{id}` | Частичное обновление (один SQL UPDATE)        |
 | DELETE | `/api/v1/subscriptions/{id}` | Удалить                                       |
 | GET    | `/api/v1/subscriptions/sum`  | Сумма за период (`from`, `to` = `MM-YYYY`)    |
 

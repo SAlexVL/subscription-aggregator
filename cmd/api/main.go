@@ -111,6 +111,7 @@ func setupRouter(h *handler.SubscriptionHandler, log *slog.Logger) *gin.Engine {
 		api.GET("/subscriptions", h.List)
 		api.GET("/subscriptions/:id", h.Get)
 		api.PUT("/subscriptions/:id", h.Update)
+		api.PATCH("/subscriptions/:id", h.Update)
 		api.DELETE("/subscriptions/:id", h.Delete)
 	}
 
