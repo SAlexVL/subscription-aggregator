@@ -14,11 +14,11 @@ import (
 )
 
 type SubscriptionHandler struct {
-	svc *service.SubscriptionService
+	svc service.SubscriptionService
 	log *slog.Logger
 }
 
-func NewSubscriptionHandler(svc *service.SubscriptionService, log *slog.Logger) *SubscriptionHandler {
+func NewSubscriptionHandler(svc service.SubscriptionService, log *slog.Logger) *SubscriptionHandler {
 	return &SubscriptionHandler{svc: svc, log: log}
 }
 

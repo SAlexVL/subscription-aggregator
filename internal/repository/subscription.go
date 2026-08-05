@@ -15,15 +15,15 @@ import (
 
 var ErrNotFound = errors.New("subscription not found")
 
-type SubscriptionRepository struct {
+type postgresSubscriptionRepository struct {
 	pool *pgxpool.Pool
 }
 
-func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
-	return &SubscriptionRepository{pool: pool}
+func NewSubscriptionRepository(pool *pgxpool.Pool) SubscriptionRepository {
+	return &postgresSubscriptionRepository{pool: pool}
 }
 
-func (r *SubscriptionRepository) Create(ctx context.Context, req model.CreateSubscriptionRequest) (*model.Subscription, error) {
+func (r *postgresSubscriptionRepository) Create(ctx context.Context, req model.CreateSubscriptionRequest) (*model.Subscription, error) {
 	const q = `
 		INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date)
 		VALUES ($1, $2, $3, $4, $5)
@@ -44,7 +44,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, req model.CreateSub
 	return sub, nil
 }
 
-func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Subscription, error) {
+func (r *postgresSubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Subscription, error) {
 	const q = `
 		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
 		FROM subscriptions
@@ -60,7 +60,7 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 	return sub, nil
 }
 
-func (r *SubscriptionRepository) List(ctx context.Context, f model.ListFilter) ([]model.Subscription, int, error) {
+func (r *postgresSubscriptionRepository) List(ctx context.Context, f model.ListFilter) ([]model.Subscription, int, error) {
 	where := `WHERE user_id = $1`
 	args := []any{f.UserID}
 	argN := 2
@@ -102,7 +102,7 @@ func (r *SubscriptionRepository) List(ctx context.Context, f model.ListFilter) (
 	return result, total, rows.Err()
 }
 
-func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, req model.UpdateSubscriptionRequest) (*model.Subscription, error) {
+func (r *postgresSubscriptionRepository) Update(ctx context.Context, id uuid.UUID, req model.UpdateSubscriptionRequest) (*model.Subscription, error) {
 	current, err := r.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, req m
 	return sub, nil
 }
 
-func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *postgresSubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	tag, err := r.pool.Exec(ctx, `DELETE FROM subscriptions WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("delete subscription: %w", err)
@@ -166,7 +166,7 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error
 }
 
 // ListForSum returns subscriptions that may overlap with [from, to].
-func (r *SubscriptionRepository) ListForSum(ctx context.Context, f model.SumFilter) ([]model.Subscription, error) {
+func (r *postgresSubscriptionRepository) ListForSum(ctx context.Context, f model.SumFilter) ([]model.Subscription, error) {
 	q := `
 		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
 		FROM subscriptions

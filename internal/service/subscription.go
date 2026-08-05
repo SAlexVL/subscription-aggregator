@@ -17,16 +17,16 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 )
 
-type SubscriptionService struct {
-	repo *repository.SubscriptionRepository
+type subscriptionService struct {
+	repo repository.SubscriptionRepository
 	log  *slog.Logger
 }
 
-func NewSubscriptionService(repo *repository.SubscriptionRepository, log *slog.Logger) *SubscriptionService {
-	return &SubscriptionService{repo: repo, log: log}
+func NewSubscriptionService(repo repository.SubscriptionRepository, log *slog.Logger) SubscriptionService {
+	return &subscriptionService{repo: repo, log: log}
 }
 
-func (s *SubscriptionService) Create(ctx context.Context, req model.CreateSubscriptionRequest) (*model.Subscription, error) {
+func (s *subscriptionService) Create(ctx context.Context, req model.CreateSubscriptionRequest) (*model.Subscription, error) {
 	if err := validateCreate(req); err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (s *SubscriptionService) Create(ctx context.Context, req model.CreateSubscr
 	return sub, nil
 }
 
-func (s *SubscriptionService) Get(ctx context.Context, id uuid.UUID) (*model.Subscription, error) {
+func (s *subscriptionService) Get(ctx context.Context, id uuid.UUID) (*model.Subscription, error) {
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if !errors.Is(err, repository.ErrNotFound) {
@@ -51,7 +51,7 @@ func (s *SubscriptionService) Get(ctx context.Context, id uuid.UUID) (*model.Sub
 	return sub, nil
 }
 
-func (s *SubscriptionService) List(ctx context.Context, f model.ListFilter) (*model.ListResponse, error) {
+func (s *subscriptionService) List(ctx context.Context, f model.ListFilter) (*model.ListResponse, error) {
 	if f.UserID == uuid.Nil {
 		return nil, fmt.Errorf("%w: user_id is required", ErrInvalidInput)
 	}
@@ -79,7 +79,7 @@ func (s *SubscriptionService) List(ctx context.Context, f model.ListFilter) (*mo
 	}, nil
 }
 
-func (s *SubscriptionService) Update(ctx context.Context, id uuid.UUID, req model.UpdateSubscriptionRequest) (*model.Subscription, error) {
+func (s *subscriptionService) Update(ctx context.Context, id uuid.UUID, req model.UpdateSubscriptionRequest) (*model.Subscription, error) {
 	if err := validateUpdate(req); err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (s *SubscriptionService) Update(ctx context.Context, id uuid.UUID, req mode
 	return sub, nil
 }
 
-func (s *SubscriptionService) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *subscriptionService) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		if !errors.Is(err, repository.ErrNotFound) {
 			s.log.Error("failed to delete subscription", "id", id, "error", err)
@@ -106,7 +106,7 @@ func (s *SubscriptionService) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *SubscriptionService) Sum(ctx context.Context, f model.SumFilter) (*model.SumResponse, error) {
+func (s *subscriptionService) Sum(ctx context.Context, f model.SumFilter) (*model.SumResponse, error) {
 	if f.From.Time.After(f.To.Time) {
 		return nil, fmt.Errorf("%w: from must be before or equal to to", ErrInvalidInput)
 	}
