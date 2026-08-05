@@ -1,0 +1,26 @@
+---
+description: Go layered architecture and PostgreSQL practices
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go backend principles
+
+Unless the user request explicitly says otherwise, follow these defaults for Go services:
+
+## Layers and interfaces
+- Define interfaces for `service` and `repository` layers.
+- Depend on interfaces, not concrete structs (handler → service interface, service → repository interface).
+- Constructors return interfaces; implementations stay unexported when practical.
+
+## Database work
+- Push filtering, aggregation, and joins to PostgreSQL — do not load rows into app memory to sum/filter.
+- Partial updates (`PUT`/`PATCH`): one dynamic `UPDATE … SET` for provided fields + `RETURNING`. No pre-read `SELECT`.
+- Map driver errors with `errors.Is(err, pgx.ErrNoRows)` to a domain `ErrNotFound` via a shared helper (e.g. `mapDBError`). Use it consistently in repository methods.
+- Prefer `DELETE … RETURNING` / `UPDATE … RETURNING` so missing rows surface as `pgx.ErrNoRows`.
+
+## API list endpoints
+- Do not return unbounded collections. Require a scoping key when appropriate (e.g. `user_id`) and always paginate (`limit`/`offset` + `total`).
+
+## Money
+- Store money as integer minor units or whole currency units as the domain requires (no float).
