@@ -111,23 +111,16 @@ func (s *subscriptionService) Sum(ctx context.Context, f model.SumFilter) (*mode
 		return nil, fmt.Errorf("%w: from must be before or equal to to", ErrInvalidInput)
 	}
 
-	items, err := s.repo.ListForSum(ctx, f)
+	total, err := s.repo.Sum(ctx, f)
 	if err != nil {
 		s.log.Error("failed to calculate sum", "error", err)
 		return nil, err
-	}
-
-	total := 0
-	for _, item := range items {
-		months := model.OverlapMonths(item.StartDate, item.EndDate, f.From, f.To)
-		total += item.Price * months
 	}
 
 	s.log.Info("subscription sum calculated",
 		"total", total,
 		"from", f.From.String(),
 		"to", f.To.String(),
-		"matched", len(items),
 	)
 
 	return &model.SumResponse{

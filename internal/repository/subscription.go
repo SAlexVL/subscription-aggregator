@@ -165,15 +165,27 @@ func (r *postgresSubscriptionRepository) Delete(ctx context.Context, id uuid.UUI
 	return nil
 }
 
-// ListForSum returns subscriptions that may overlap with [from, to].
-func (r *postgresSubscriptionRepository) ListForSum(ctx context.Context, f model.SumFilter) ([]model.Subscription, error) {
+// Sum calculates total subscription cost for the period on the database side.
+// For each matching row: price * number of overlapping months with [from, to].
+func (r *postgresSubscriptionRepository) Sum(ctx context.Context, f model.SumFilter) (int, error) {
 	q := `
-		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-		FROM subscriptions
-		WHERE start_date <= $1
-		  AND (end_date IS NULL OR end_date >= $2)
+		SELECT COALESCE(SUM(
+			price * (
+				(EXTRACT(YEAR FROM overlap_end)::int - EXTRACT(YEAR FROM overlap_start)::int) * 12
+				+ (EXTRACT(MONTH FROM overlap_end)::int - EXTRACT(MONTH FROM overlap_start)::int)
+				+ 1
+			)
+		), 0)::bigint
+		FROM (
+			SELECT
+				price,
+				GREATEST(start_date, $1::date) AS overlap_start,
+				LEAST(COALESCE(end_date, $2::date), $2::date) AS overlap_end
+			FROM subscriptions
+			WHERE start_date <= $2::date
+			  AND (end_date IS NULL OR end_date >= $1::date)
 	`
-	args := []any{f.To.Time, f.From.Time}
+	args := []any{f.From.Time, f.To.Time}
 	argN := 3
 
 	if f.UserID != nil {
@@ -186,21 +198,16 @@ func (r *postgresSubscriptionRepository) ListForSum(ctx context.Context, f model
 		args = append(args, *f.ServiceName)
 	}
 
-	rows, err := r.pool.Query(ctx, q, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list for sum: %w", err)
-	}
-	defer rows.Close()
+	q += `
+		) AS overlapped
+		WHERE overlap_start <= overlap_end
+	`
 
-	result := make([]model.Subscription, 0)
-	for rows.Next() {
-		sub, err := scanSubscription(rows)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, *sub)
+	var total int64
+	if err := r.pool.QueryRow(ctx, q, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("sum subscriptions: %w", err)
 	}
-	return result, rows.Err()
+	return int(total), nil
 }
 
 type scannable interface {
